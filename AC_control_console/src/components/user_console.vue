@@ -52,7 +52,7 @@
                   </div>
                   <div class="text-box">
                     <div class="title">正在送风</div>
-                    <div class="desc">当前费率: {{ getFeeRate }}元/度</div>
+                    <div class="desc">当前费率: {{ getFeeRate }}元/分钟</div>
                   </div>
                 </div>
                 <div v-else class="status-content waiting">
@@ -130,6 +130,7 @@ import {
 } from 'lucide-vue-next';
 
 const circumference = 2 * Math.PI * 85; 
+const API_BASE = 'http://127.0.0.1:5000/api/room/302';
 
 // --- State & Timers ---
 const currentTime = ref('');
@@ -154,16 +155,58 @@ const progressOffset = computed(() => {
   return circumference * (1 - percent);
 });
 
-const getFeeRate = computed(() => ({ 'Low': '0.5', 'Mid': '1.0', 'High': '1.5' }[acState.fanSpeed]));
+const getFeeRate = computed(() => ({ 'Low': '0.33', 'Mid': '0.50', 'High': '1.00' }[acState.fanSpeed]));
+
+// --- API Methods ---
+const syncStateToBackend = async () => {
+  try {
+    await fetch(`${API_BASE}/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        power_on: acState.powerOn,
+        target_temp: acState.targetTemp,
+        fan_speed: acState.fanSpeed
+      })
+    });
+  } catch (e) {
+    console.error("Failed to sync state:", e);
+  }
+};
+
+const fetchStatusFromBackend = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/status`);
+    if (res.ok) {
+      const data = await res.json();
+      // 同步后端数据
+      acState.totalFee = data.total_fee;
+      acState.currentTemp = data.current_temp;
+      acState.duration = data.duration;
+      // 如果后端也维护开关状态，可以在这里同步，防止多端不一致
+      // acState.powerOn = data.power_on; 
+    }
+  } catch (e) {
+    console.error("Failed to fetch status:", e);
+  }
+};
 
 // --- Methods ---
 const handlePower = () => {
   acState.powerOn = !acState.powerOn;
-  acState.powerOn ? startSimulation() : stopSimulation();
+  syncStateToBackend(); // 发送请求
+  acState.powerOn ? startPolling() : stopPolling();
 };
 
-const changeTemp = (d) => acState.targetTemp += d;
-const changeSpeed = (s) => acState.fanSpeed = s;
+const changeTemp = (d) => {
+  acState.targetTemp += d;
+  syncStateToBackend(); // 发送请求
+};
+
+const changeSpeed = (s) => {
+  acState.fanSpeed = s;
+  syncStateToBackend(); // 发送请求
+};
 
 const formatDuration = (s) => {
   const h = Math.floor(s / 3600);
@@ -171,18 +214,16 @@ const formatDuration = (s) => {
   return `${h}h ${m}m`;
 };
 
-// Simulation Logic
-const startSimulation = () => {
+// Polling Logic (原 Simulation Logic)
+const startPolling = () => {
   if (simulationTimer) clearInterval(simulationTimer);
-  simulationTimer = setInterval(() => {
-    acState.totalFee += { 'Low': 0.01, 'Mid': 0.02, 'High': 0.03 }[acState.fanSpeed];
-    if (acState.currentTemp > acState.targetTemp) acState.currentTemp -= 0.05;
-    else acState.currentTemp += 0.05;
-    acState.duration++;
-  }, 1000);
+  // 立即执行一次
+  fetchStatusFromBackend();
+  // 每秒轮询一次
+  simulationTimer = setInterval(fetchStatusFromBackend, 1000);
 };
 
-const stopSimulation = () => { 
+const stopPolling = () => { 
   if (simulationTimer) clearInterval(simulationTimer); 
   simulationTimer = null; 
 };
@@ -195,10 +236,15 @@ const updateTime = () => {
 onMounted(() => {
   updateTime();
   clockTimer = setInterval(updateTime, 10000);
+  // 页面加载时先获取一次状态，如果后端已经是开机状态，则自动开启轮询
+  fetchStatusFromBackend().then(() => {
+    // 可选：如果后端记录是开机，前端也同步为开机
+    // if (acState.powerOn) startPolling();
+  });
 });
 
 onUnmounted(() => {
-  stopSimulation();
+  stopPolling();
   if (clockTimer) clearInterval(clockTimer);
 });
 </script>
