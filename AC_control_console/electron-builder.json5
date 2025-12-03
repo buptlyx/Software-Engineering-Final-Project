@@ -1,0 +1,66 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "YourAppID",
+  "asar": true,
+  "productName": "CommandLineHelper",
+  "mac": {
+    "target": [
+      "dmg"
+    ],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "target": [
+      "AppImage"
+    ],
+    "artifactName": "${productName}-Linux-${version}.${ext}"
+  },
+  "files": [
+    "dist",
+    "dist-electron"
+  ],
+  "extraResources": [
+    {
+      "from": "src/backend/app.exe",
+      "to": "backend/app.exe",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "node_modules/highlight.js/styles/github.css",
+      "to": "node_modules/highlight.js/styles/github.css",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "node_modules/highlight.js/styles/github-dark.css",
+      "to": "node_modules/highlight.js/styles/github-dark.css",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "directories": {
+    "output": "build"
+  }
+}
