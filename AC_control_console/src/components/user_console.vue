@@ -6,7 +6,9 @@
         <div class="header-left">
           <div class="room-badge">
             <MapPin class="icon-sm" />
-            <span>ROOM 302</span>
+            <select v-model="currentRoomId" class="room-select">
+              <option v-for="id in roomList" :key="id" :value="id">ROOM {{ id }}</option>
+            </select>
           </div>
           <div class="status-tag" :class="{ active: acState.powerOn }">
             <Wifi class="icon-xs" :class="{ breathing: acState.powerOn }" />
@@ -123,17 +125,26 @@
 </template>
 
 <script setup>
-import { reactive, computed, onMounted, onUnmounted, ref } from 'vue';
+import { reactive, computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { 
   Wifi, MapPin, Wind, Hourglass, 
   Coins, Clock, Power, Plus, Minus, Crosshair 
 } from 'lucide-vue-next';
 
 const circumference = 2 * Math.PI * 85; 
-const API_BASE = 'http://127.0.0.1:5000/api/room/302';
+const API_BASE_URL = 'http://127.0.0.1:5000/api/room';
 
 // --- State & Timers ---
 const currentTime = ref('');
+const currentRoomId = ref('302');
+const roomList = [];
+// 生成 40 个房间号 (101-110, ... 401-410)
+for (let f = 1; f <= 4; f++) {
+  for (let r = 1; r <= 10; r++) {
+    roomList.push(`${f}${r.toString().padStart(2, '0')}`);
+  }
+}
+
 let simulationTimer = null;
 let clockTimer = null;
 
@@ -160,7 +171,7 @@ const getFeeRate = computed(() => ({ 'Low': '0.33', 'Mid': '0.50', 'High': '1.00
 // --- API Methods ---
 const syncStateToBackend = async () => {
   try {
-    await fetch(`${API_BASE}/control`, {
+    await fetch(`${API_BASE_URL}/${currentRoomId.value}/control`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -176,7 +187,7 @@ const syncStateToBackend = async () => {
 
 const fetchStatusFromBackend = async () => {
   try {
-    const res = await fetch(`${API_BASE}/status`);
+    const res = await fetch(`${API_BASE_URL}/${currentRoomId.value}/status`);
     if (res.ok) {
       const data = await res.json();
       // 同步后端数据
@@ -185,11 +196,22 @@ const fetchStatusFromBackend = async () => {
       acState.duration = data.duration;
       // 如果后端也维护开关状态，可以在这里同步，防止多端不一致
       // acState.powerOn = data.power_on; 
+      
+      // 注意：为了演示效果，如果切换房间，应该同步该房间的开关状态
+      // 如果你想让控制台完全反映后端状态，取消下面这行的注释：
+      acState.powerOn = data.power_on;
+      acState.targetTemp = data.target_temp;
+      acState.fanSpeed = data.fan_speed;
     }
   } catch (e) {
     console.error("Failed to fetch status:", e);
   }
 };
+
+// 监听房间切换
+watch(currentRoomId, () => {
+  fetchStatusFromBackend();
+});
 
 // --- Methods ---
 const handlePower = () => {
@@ -303,6 +325,22 @@ $text-sec: rgba(255, 255, 255, 0.5);
     font-weight: bold; color: #fff;
     background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 6px;
     font-size: 12px;
+
+    .room-select {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-weight: bold;
+      font-size: 12px;
+      cursor: pointer;
+      outline: none;
+      font-family: inherit;
+      
+      option {
+        background: #222;
+        color: #fff;
+      }
+    }
   }
 
   .status-tag {
