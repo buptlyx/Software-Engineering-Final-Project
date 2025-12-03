@@ -100,72 +100,80 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Activity, Fan, Power, Crosshair } from 'lucide-vue-next';
 
-// --- Mock Data Generation ---
+// --- API Configuration ---
+const API_BASE_URL = 'http://127.0.0.1:5000/api/room';
+
+// --- State ---
 const rooms = ref([]);
-const filterType = ref('ALL');
+const filterType = ref('全部');
 let monitorTimer = null;
 
-// 初始化 40 个房间 (4层 * 10间)
-const initRooms = () => {
-  const arr = [];
-  for (let f = 1; f <= 4; f++) {
-    for (let r = 1; r <= 10; r++) {
-      const roomId = f * 100 + r;
-      // 随机初始状态
-      const isPowerOn = Math.random() > 0.4; // 60% 开机率
-      const isWaiting = isPowerOn && Math.random() > 0.7; // 开机中 30% 概率排队
-      
-      arr.push({
-        id: roomId,
-        status: !isPowerOn ? 'idle' : (isWaiting ? 'waiting' : 'serving'),
-        currentTemp: 22 + Math.random() * 8, // 22-30度
-        targetTemp: 22,
-        fanSpeed: Math.random() > 0.6 ? 'High' : (Math.random() > 0.5 ? 'Mid' : 'Low'),
-        fee: Math.random() * 50
-      });
-    }
+// 生成 40 个房间号 (101-110, ... 401-410)
+const roomIds = [];
+for (let f = 1; f <= 4; f++) {
+  for (let r = 1; r <= 10; r++) {
+    roomIds.push(`${f}${r.toString().padStart(2, '0')}`);
   }
-  rooms.value = arr;
+}
+
+// --- Fetch Data from Backend ---
+const fetchAllRooms = async () => {
+  try {
+    const promises = roomIds.map(roomId =>
+      fetch(`${API_BASE_URL}/${roomId}/status`)
+        .then(res => res.ok ? res.json() : null)
+        .catch(() => null)
+    );
+    
+    const results = await Promise.all(promises);
+    
+    rooms.value = results.map((data, index) => {
+      if (!data) return null;
+      
+      const roomId = roomIds[index];
+      // 根据后端数据判断房间状态
+      let status = 'idle';
+      if (data.power_on) {
+        status = data.is_active ? 'serving' : 'idle';
+      }
+      
+      return {
+        id: roomId,
+        status: status,
+        currentTemp: data.current_temp,
+        targetTemp: data.target_temp,
+        fanSpeed: data.fan_speed,
+        fee: data.total_fee,
+        isActive: data.is_active,
+        powerOn: data.power_on
+      };
+    }).filter(r => r !== null);
+  } catch (e) {
+    console.error("Failed to fetch rooms:", e);
+  }
 };
 
 // --- Computed Stats ---
-const activeCount = computed(() => rooms.value.filter(r => r.status !== 'idle').length);
+const activeCount = computed(() => rooms.value.filter(r => r.powerOn && r.status !== 'idle').length);
 const waitingCount = computed(() => rooms.value.filter(r => r.status === 'waiting').length);
 const totalRevenue = computed(() => rooms.value.reduce((sum, r) => sum + r.fee, 0));
 
 const filteredRooms = computed(() => {
-  if (filterType.value === 'ALL') return rooms.value;
-  if (filterType.value === 'ACTIVE') return rooms.value.filter(r => r.status !== 'idle');
-  if (filterType.value === 'WAITING') return rooms.value.filter(r => r.status === 'waiting');
+  if (filterType.value === '全部') return rooms.value;
+  if (filterType.value === '服务中') return rooms.value.filter(r => r.status === 'serving');
+  if (filterType.value === '等待中') return rooms.value.filter(r => r.status === 'waiting' || (!r.powerOn && r.status !== 'idle'));
   return rooms.value;
 });
 
-// --- Real-time Simulation ---
+// --- Start Monitor ---
 const startMonitor = () => {
-  monitorTimer = setInterval(() => {
-    rooms.value.forEach(room => {
-      if (room.status === 'idle') return;
-
-      // 模拟费用增加
-      const rate = { 'Low': 0.01, 'Mid': 0.02, 'High': 0.03 }[room.fanSpeed];
-      room.fee += rate;
-
-      // 模拟温度波动
-      if (room.status === 'serving') {
-        if (room.currentTemp > room.targetTemp) room.currentTemp -= 0.02;
-        else room.currentTemp += 0.02;
-      }
-      
-      // 随机切换调度状态 (模拟调度算法)
-      if (Math.random() > 0.98) {
-        room.status = room.status === 'serving' ? 'waiting' : 'serving';
-      }
-    });
-  }, 1000);
+  if (monitorTimer) clearInterval(monitorTimer);
+  // 每秒更新一次房间数据
+  fetchAllRooms();
+  monitorTimer = setInterval(fetchAllRooms, 1000);
 };
 
 onMounted(() => {
-  initRooms();
   startMonitor();
 });
 
