@@ -12,46 +12,61 @@ room_state = {}
 for floor in range(1, 5):  # 1到4层
     for r in range(1, 11): # 每层10个房间
         room_id = f"{floor}{r:02d}"
+        # 根据楼层确定房间费用 (元/晚)
+        # 1楼：100元/晚，2楼：150元/晚，3楼：200元/晚，4楼：250元/晚
+        room_price = {1: 100.0, 2: 150.0, 3: 200.0, 4: 250.0}[floor]
+        
         room_state[room_id] = {
             "power_on": False,
             "is_active": False, # 是否正在送风/计费
             "fan_speed": "Mid",  # Low, Mid, High
             "initial_temp": 28.0,
-        "current_temp": 28.0, # 初始温度稍微有点差异
-        "target_temp": 25.0,
-        "total_fee": 0.0,
-        "duration": 0
-    }
+            "current_temp": 28.0, # 初始温度稍微有点差异
+            "target_temp": 25.0,
+            "total_fee": 0.0,
+            "duration": 0,
+            "room_price": room_price  # 房间费用 (元/晚)
+        }
 #以下是制冷测试用例
 room_state["101"]["initial_temp"] = 32.0
 room_state["101"]["current_temp"] = 32.0
+room_state["101"]["room_price"] = 100.0
 
 room_state["102"]["initial_temp"] = 28.0
 room_state["102"]["current_temp"] = 28.0
+room_state["102"]["room_price"] = 125.0
 
 room_state["103"]["initial_temp"] = 30.0
 room_state["103"]["current_temp"] = 30.0
+room_state["103"]["room_price"] = 150
 
 room_state["104"]["initial_temp"] = 29.0
 room_state["104"]["current_temp"] = 29.0
+room_state["104"]["room_price"] = 200
 
 room_state["105"]["initial_temp"] = 35.0
 room_state["105"]["current_temp"] = 35.0
+room_state["105"]["room_price"] = 100.0
 #以下是制热测试用例
 room_state["106"]["initial_temp"] = 10.0
 room_state["106"]["current_temp"] = 10.0
+room_state["106"]["room_price"] = 100.0
 
 room_state["107"]["initial_temp"] = 15.0
 room_state["107"]["current_temp"] = 15.0
+room_state["107"]["room_price"] = 125.0
 
 room_state["108"]["initial_temp"] = 18.0
 room_state["108"]["current_temp"] = 18.0
+room_state["108"]["room_price"] = 150
 
 room_state["109"]["initial_temp"] = 12.0
 room_state["109"]["current_temp"] = 12.0
+room_state["109"]["room_price"] = 200
 
 room_state["110"]["initial_temp"] = 14.0
 room_state["110"]["current_temp"] = 14.0
+room_state["110"]["room_price"] = 100.0
 # 计费费率 (元/秒)
 # High: 1度/1分钟 = 1.0元/60秒
 # Mid:  1度/2分钟 = 1.0元/120秒

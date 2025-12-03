@@ -31,8 +31,7 @@
         <div class="room-status-card" :class="{ active: selectedRoom }">
           <div v-if="selectedRoom">
             <div class="r-id">{{ selectedRoom.id }}</div>
-            <div class="r-info">{{ selectedRoom.type }} | ¥{{ selectedRoom.price }}/晚</div>
-            <div class="r-deposit">押金: ¥{{ selectedRoom.deposit }}</div>
+            <div class="r-info">{{ selectedRoom.type }} | ¥{{ selectedRoom.roomPrice }}/晚</div>
           </div>
           <div v-else class="placeholder">请在右侧选择房间</div>
         </div>
@@ -78,9 +77,10 @@
 </template>
 
 <script setup>
-/* 逻辑保持原样，仅做展示简化 */
 import { reactive, ref, computed, onMounted } from 'vue';
 import { LogIn } from 'lucide-vue-next';
+
+const API_BASE = 'http://127.0.0.1:5000';
 const currentDate = new Date().toLocaleDateString();
 const isProcessing = ref(false);
 const selectedRoom = ref(null);
@@ -88,19 +88,51 @@ const form = reactive({ idCard: '', name: '', phone: '', days: 1 });
 const floors = ref([]);
 const isValid = computed(() => form.idCard && form.name && selectedRoom.value);
 
-const initRooms = () => {
-  /* 模拟数据生成逻辑 */
+// 从后端获取房间费用
+const fetchRoomPrice = async (roomId) => {
+  try {
+    const response = await fetch(`${API_BASE}/api/room/${roomId}/status`);
+    if (response.ok) {
+      const data = await response.json();
+      console.log(`房间 ${roomId} 费用:`, data.room_price);
+      return data.room_price || 0;
+    } else {
+      console.error(`房间 ${roomId} 响应失败:`, response.status);
+    }
+  } catch (error) {
+    console.error(`获取房间 ${roomId} 费用失败:`, error);
+  }
+  return 0;
+};
+
+const initRooms = async () => {
   const f = [];
   for (let i = 1; i <= 4; i++) {
     const rooms = [];
     for (let j = 1; j <= 10; j++) {
-      rooms.push({ id: i*100+j, type: j>8?'大床':'标间', price: j>8?300:200, deposit: 500, isFree: Math.random()>0.3 });
+      // 房间ID格式: "101", "102", ... "410"
+      const roomId = `${i}${j.toString().padStart(2, '0')}`;
+      const roomPrice = await fetchRoomPrice(roomId);
+      rooms.push({
+        id: roomId,
+        type: j > 8 ? '大床' : '标间',
+        roomPrice: roomPrice,
+        isFree: true  // 全部房间均可预订
+      });
     }
     f.push({ level: i, rooms });
   }
   floors.value = f;
 };
-const handleCheckIn = () => { isProcessing.value = true; setTimeout(() => { alert('Success'); isProcessing.value = false; }, 1000); };
+
+const handleCheckIn = () => {
+  isProcessing.value = true;
+  setTimeout(() => {
+    alert(`入住成功！\n房间: ${selectedRoom.value.id}\n费用: ¥${selectedRoom.value.roomPrice}/晚\n天数: ${form.days}天`);
+    isProcessing.value = false;
+  }, 1000);
+};
+
 onMounted(initRooms);
 </script>
 
