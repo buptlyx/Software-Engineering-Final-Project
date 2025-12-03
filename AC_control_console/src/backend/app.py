@@ -15,8 +15,8 @@ for floor in range(1, 5):  # 1到4层
         room_state[room_id] = {
             "power_on": False,
             "fan_speed": "Mid",  # Low, Mid, High
-            "current_temp": 28.0 + (r % 3) * 0.5, # 初始温度稍微有点差异
-            "target_temp": 22.0,
+            "current_temp": 25.0, 
+            "target_temp": 25.0,
             "total_fee": 0.0,
             "duration": 0
         }
@@ -64,7 +64,7 @@ def background_task():
                     state["current_temp"] += temp_change
                 
                 # [调试日志] 打印当前状态，方便观察变化
-                #print(f"[Room {room_id}] 风速:{state['fan_speed']} | 温度:{state['current_temp']:.4f} (变化:{temp_change:.4f}/s) | 费用:{state['total_fee']:.4f}")
+                print(f"[Room {room_id}] 风速:{state['fan_speed']} | 温度:{state['current_temp']:.4f} (变化:{temp_change:.4f}/s) | 费用:{state['total_fee']:.4f}")
         
         time.sleep(1)  # 每秒执行一次
 
