@@ -234,7 +234,7 @@ watch(currentRoomId, () => {
 const handlePower = () => {
   acState.powerOn = !acState.powerOn;
   syncStateToBackend(); // 发送请求
-  acState.powerOn ? startPolling() : stopPolling();
+  // 无论开闭，都持续轮询以实时显示温度变化（包括回温）
 };
 
 const changeTemp = (d) => {
@@ -275,10 +275,11 @@ const updateTime = () => {
 onMounted(() => {
   updateTime();
   clockTimer = setInterval(updateTime, 10000);
-  // 页面加载时先获取一次状态，如果后端已经是开机状态，则自动开启轮询
+  // 页面加载时先获取一次状态，然后启动轮询
   fetchStatusFromBackend().then(() => {
-    // 可选：如果后端记录是开机，前端也同步为开机
-    // if (acState.powerOn) startPolling();
+    // 立即启动轮询，持续更新温度
+    if (simulationTimer) clearInterval(simulationTimer);
+    simulationTimer = setInterval(fetchStatusFromBackend, 1000);
   });
 });
 
