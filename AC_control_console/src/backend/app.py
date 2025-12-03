@@ -7,17 +7,19 @@ app = Flask(__name__)
 CORS(app)  # 允许跨域请求，方便前端调用
 
 # 模拟数据库：存储房间状态
-# 假设当前只有一个房间 302
-room_state = {
-    "302": {
-        "power_on": False,
-        "fan_speed": "Mid",  # Low, Mid, High
-        "current_temp": 28.5,
-        "target_temp": 22.0,
-        "total_fee": 0.0,
-        "duration": 0
-    }
-}
+# 初始化 40 个房间 (101-110, 201-210, 301-310, 401-410)
+room_state = {}
+for floor in range(1, 5):  # 1到4层
+    for r in range(1, 11): # 每层10个房间
+        room_id = f"{floor}{r:02d}"
+        room_state[room_id] = {
+            "power_on": False,
+            "fan_speed": "Mid",  # Low, Mid, High
+            "current_temp": 28.0 + (r % 3) * 0.5, # 初始温度稍微有点差异
+            "target_temp": 22.0,
+            "total_fee": 0.0,
+            "duration": 0
+        }
 
 # 计费费率 (元/秒)
 # High: 1度/1分钟 = 1.0元/60秒
