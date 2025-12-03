@@ -57,12 +57,21 @@
                     <div class="desc">当前费率: {{ getFeeRate }}元/分钟</div>
                   </div>
                 </div>
+                <div v-else-if="acState.serviceState === 'idle'" class="status-content idle">
+                  <div class="icon-box idle">
+                    <CheckCircle class="icon-md" />
+                  </div>
+                  <div class="text-box">
+                    <div class="title">待机中</div>
+                    <div class="desc">已达到目标温度，停止计费</div>
+                  </div>
+                </div>
                 <div v-else class="status-content waiting">
                   <div class="icon-box waiting">
                     <Hourglass class="icon-md breathing" />
                   </div>
                   <div class="text-box">
-                    <div class="title">排队等待 / Waiting</div>
+                    <div class="title">排队等待</div>
                     <div class="desc">系统负载高，请稍候...</div>
                   </div>
                 </div>
@@ -127,7 +136,7 @@
 <script setup>
 import { reactive, computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { 
-  Wifi, MapPin, Wind, Hourglass, 
+  Wifi, MapPin, Wind, Hourglass, CheckCircle,
   Coins, Clock, Power, Plus, Minus, Crosshair 
 } from 'lucide-vue-next';
 
@@ -136,7 +145,7 @@ const API_BASE_URL = 'http://127.0.0.1:5000/api/room';
 
 // --- State & Timers ---
 const currentTime = ref('');
-const currentRoomId = ref('302');
+const currentRoomId = ref('101');
 const roomList = [];
 // 生成 40 个房间号 (101-110, ... 401-410)
 for (let f = 1; f <= 4; f++) {
@@ -147,11 +156,11 @@ for (let f = 1; f <= 4; f++) {
 
 let simulationTimer = null;
 let clockTimer = null;
-
+// 房间数据接口（可以随意修改）
 const acState = reactive({
   powerOn: false,
-  currentTemp: 28.5,
-  targetTemp: 22,
+  currentTemp: 30,
+  targetTemp: 25,
   fanSpeed: 'Mid',
   totalFee: 0.0,
   duration: 0,
@@ -194,6 +203,14 @@ const fetchStatusFromBackend = async () => {
       acState.totalFee = data.total_fee;
       acState.currentTemp = data.current_temp;
       acState.duration = data.duration;
+      
+      // 更新服务状态
+      if (data.is_active) {
+        acState.serviceState = 'serving';
+      } else {
+        acState.serviceState = 'idle';
+      }
+
       // 如果后端也维护开关状态，可以在这里同步，防止多端不一致
       // acState.powerOn = data.power_on; 
       
@@ -421,6 +438,7 @@ $text-sec: rgba(255, 255, 255, 0.5);
     
     &.serving { color: $primary; box-shadow: 0 0 10px rgba(0,242,255,0.2); }
     &.waiting { color: #ff9d00; box-shadow: 0 0 10px rgba(255,157,0,0.2); }
+    &.idle { color: #00ff9d; box-shadow: 0 0 10px rgba(0,255,157,0.2); }
   }
 
   .text-box {
@@ -430,6 +448,7 @@ $text-sec: rgba(255, 255, 255, 0.5);
 
   &.serving { border: 1px solid rgba(0, 242, 255, 0.3); background: rgba(0, 242, 255, 0.05); }
   &.waiting { border: 1px solid rgba(255, 157, 0, 0.3); background: rgba(255, 157, 0, 0.05); }
+  &.idle { border: 1px solid rgba(0, 255, 157, 0.3); background: rgba(0, 255, 157, 0.05); }
 }
 
 /* --- Right Section (Controls) --- */
