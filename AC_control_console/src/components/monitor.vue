@@ -61,7 +61,7 @@
               </div>
 
               <!-- 运行数据 (仅开机显示) -->
-              <div v-if="room.status !== 'idle'" class="card-body">
+              <div v-if="room.status !== 'offline'" class="card-body">
                 <div class="data-row">
                   <span class="temp-current">{{ room.currentTemp.toFixed(1) }}°</span>
                   <span class="temp-target"><Crosshair class="icon-xxs"/> {{ room.targetTemp }}°</span>
@@ -78,7 +78,8 @@
                 <!-- 调度状态条 -->
                 <div class="status-bar">
                   <span v-if="room.status === 'serving'" class="text-primary">Serving</span>
-                  <span v-else class="text-warning">Queueing...</span>
+                  <span v-else-if="room.status === 'waiting'" class="text-warning">Queueing...</span>
+                  <span v-else class="text-success">Standby</span>
                 </div>
               </div>
 
@@ -132,9 +133,15 @@ const fetchAllRooms = async () => {
       
       const roomId = roomIds[index];
       // 根据后端数据判断房间状态
-      let status = 'idle';
+      let status = 'offline';
       if (data.power_on) {
-        status = data.is_active ? 'serving' : 'idle';
+        if (data.is_active) {
+          status = 'serving';
+        } else if (data.is_waiting) {
+          status = 'waiting';
+        } else {
+          status = 'standby';
+        }
       }
       
       return {
@@ -154,14 +161,14 @@ const fetchAllRooms = async () => {
 };
 
 // --- Computed Stats ---
-const activeCount = computed(() => rooms.value.filter(r => r.powerOn && r.status !== 'idle').length);
+const activeCount = computed(() => rooms.value.filter(r => r.status !== 'offline').length);
 const waitingCount = computed(() => rooms.value.filter(r => r.status === 'waiting').length);
 const totalRevenue = computed(() => rooms.value.reduce((sum, r) => sum + r.fee, 0));
 
 const filteredRooms = computed(() => {
   if (filterType.value === '全部') return rooms.value;
   if (filterType.value === '服务中') return rooms.value.filter(r => r.status === 'serving');
-  if (filterType.value === '等待中') return rooms.value.filter(r => r.status === 'waiting' || (!r.powerOn && r.status !== 'idle'));
+  if (filterType.value === '等待中') return rooms.value.filter(r => r.status === 'waiting');
   return rooms.value;
 });
 
@@ -348,6 +355,7 @@ $text-sec: rgba(255, 255, 255, 0.5);
 /* Helpers */
 .text-primary { color: $primary; }
 .text-warning { color: $warning; }
+.text-success { color: #00ff9d; }
 .text-dim { color: rgba(255,255,255,0.2); }
 .icon-xxs { width: 10px; height: 10px; }
 .icon-md { width: 20px; height: 20px; }
