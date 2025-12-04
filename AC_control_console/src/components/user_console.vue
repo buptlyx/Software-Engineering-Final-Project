@@ -10,9 +10,9 @@
               <option v-for="id in roomList" :key="id" :value="id">ROOM {{ id }}</option>
             </select>
           </div>
-          <div class="status-tag" :class="{ active: acState.powerOn }">
-            <Wifi class="icon-xs" :class="{ breathing: acState.powerOn }" />
-            {{ acState.powerOn ? 'CONNECTED' : 'OFFLINE' }}
+          <div class="status-tag" :class="{ active: isConnected }">
+            <Wifi class="icon-xs" :class="{ breathing: isConnected }" />
+            {{ isConnected ? 'ONLINE' : 'DISCONNECTED' }}
           </div>
         </div>
         <div class="time-display">{{ currentTime }}</div>
@@ -167,6 +167,8 @@ const acState = reactive({
   serviceState: 'serving'
 });
 
+const isConnected = ref(false);
+
 // --- Computed ---
 const progressOffset = computed(() => {
   if (!acState.powerOn) return circumference;
@@ -180,7 +182,7 @@ const getFeeRate = computed(() => ({ 'Low': '0.33', 'Mid': '0.50', 'High': '1.00
 // --- API Methods ---
 const syncStateToBackend = async () => {
   try {
-    await fetch(`${API_BASE_URL}/${currentRoomId.value}/control`, {
+    const res = await fetch(`${API_BASE_URL}/${currentRoomId.value}/control`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -189,8 +191,14 @@ const syncStateToBackend = async () => {
         fan_speed: acState.fanSpeed
       })
     });
+    if (res.ok) {
+      isConnected.value = true;
+    } else {
+      isConnected.value = false;
+    }
   } catch (e) {
     console.error("Failed to sync state:", e);
+    isConnected.value = false;
   }
 };
 
@@ -198,6 +206,7 @@ const fetchStatusFromBackend = async () => {
   try {
     const res = await fetch(`${API_BASE_URL}/${currentRoomId.value}/status`);
     if (res.ok) {
+      isConnected.value = true;
       const data = await res.json();
       // 同步后端数据
       acState.totalFee = data.total_fee;
@@ -207,6 +216,8 @@ const fetchStatusFromBackend = async () => {
       // 更新服务状态
       if (data.is_active) {
         acState.serviceState = 'serving';
+      } else if (data.is_waiting) {
+        acState.serviceState = 'waiting';
       } else {
         acState.serviceState = 'idle';
       }
@@ -219,9 +230,12 @@ const fetchStatusFromBackend = async () => {
       acState.powerOn = data.power_on;
       acState.targetTemp = data.target_temp;
       acState.fanSpeed = data.fan_speed;
+    } else {
+      isConnected.value = false;
     }
   } catch (e) {
     console.error("Failed to fetch status:", e);
+    isConnected.value = false;
   }
 };
 
