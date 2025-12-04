@@ -23,7 +23,7 @@
           </div>
           <div class="input-row">
             <label>天数</label>
-            <input v-model="form.days" type="number" class="neon-input" />
+            <input v-model="form.days" type="number" min="1" class="neon-input" @input="validateDays" />
           </div>
         </div>
         
@@ -76,33 +76,56 @@
   </div>
 </template>
 
+<script>
+import { reactive } from 'vue';
+
+// --- 全局单例状态 ---
+// 使用 reactive 定义全局状态，确保跨组件切换时数据不丢失
+// 且保持响应式，避免输入框锁死问题
+const globalState = reactive({
+  form: { idCard: '', name: '', phone: '', days: 1 },
+  selectedRoomId: null
+});
+</script>
+
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { LogIn } from 'lucide-vue-next';
 
 const API_BASE = 'http://127.0.0.1:5000';
 const currentDate = new Date().toLocaleDateString();
 const isProcessing = ref(false);
-const selectedRoom = ref(null);
-const form = reactive({ idCard: '', name: '', phone: '', days: 1 });
-const floors = ref([]);
-const isValid = computed(() => form.idCard && form.name && selectedRoom.value);
 
-// 从后端获取房间费用
-const fetchRoomPrice = async (roomId) => {
+// 直接使用全局响应式对象，无需本地拷贝和同步
+const form = globalState.form;
+const selectedRoom = ref(null);
+const floors = ref([]);
+
+const isValid = computed(() => form.idCard && form.name && selectedRoom.value && form.days > 0);
+
+const validateDays = () => {
+  if (form.days !== '' && form.days <= 0) {
+    form.days = 1;
+  }
+};
+
+// 监听选中房间变化，更新全局ID
+watch(selectedRoom, (newVal) => {
+  globalState.selectedRoomId = newVal ? newVal.id : null;
+});
+
+// 从后端获取房间状态
+const fetchRoomStatus = async (roomId) => {
   try {
     const response = await fetch(`${API_BASE}/api/room/${roomId}/status`);
     if (response.ok) {
       const data = await response.json();
-      console.log(`房间 ${roomId} 费用:`, data.room_price);
-      return data.room_price || 0;
-    } else {
-      console.error(`房间 ${roomId} 响应失败:`, response.status);
+      return data;
     }
   } catch (error) {
-    console.error(`获取房间 ${roomId} 费用失败:`, error);
+    console.error(`获取房间 ${roomId} 状态失败:`, error);
   }
-  return 0;
+  return null;
 };
 
 const initRooms = async () => {
@@ -110,35 +133,90 @@ const initRooms = async () => {
   for (let i = 1; i <= 4; i++) {
     const rooms = [];
     for (let j = 1; j <= 10; j++) {
-      // 房间ID格式: "101", "102", ... "410"
       const roomId = `${i}${j.toString().padStart(2, '0')}`;
-      const roomPrice = await fetchRoomPrice(roomId);
+      const status = await fetchRoomStatus(roomId);
+      
       rooms.push({
         id: roomId,
         type: j > 8 ? '大床' : '标间',
-        roomPrice: roomPrice,
-        isFree: true  // 全部房间均可预订
+        roomPrice: status ? status.room_price : 0,
+        isFree: status ? !status.tenant_id : true // 如果有 tenant_id 则不空闲
       });
     }
     f.push({ level: i, rooms });
   }
   floors.value = f;
+  
+  // 恢复选中状态
+  if (globalState.selectedRoomId) {
+    for (const floor of f) {
+      const found = floor.rooms.find(r => r.id === globalState.selectedRoomId);
+      if (found && found.isFree) {
+        selectedRoom.value = found;
+        break;
+      } else if (found && !found.isFree) {
+        // 如果房间被占用了，清除全局选中状态
+        globalState.selectedRoomId = null;
+      }
+    }
+  }
 };
 
-const handleCheckIn = () => {
+const handleCheckIn = async () => {
   isProcessing.value = true;
-  setTimeout(() => {
-    alert(`入住成功！\n房间: ${selectedRoom.value.id}\n费用: ¥${selectedRoom.value.roomPrice}/晚\n天数: ${form.days}天`);
+  try {
+    const response = await fetch(`${API_BASE}/api/check_in`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room_id: selectedRoom.value.id,
+        id_card: form.idCard,
+        name: form.name,
+        phone: form.phone,
+        days: form.days
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      alert(`入住成功！\n房间: ${selectedRoom.value.id}\n费用: ¥${selectedRoom.value.roomPrice}/晚\n天数: ${form.days}天`);
+      
+      // 重置表单 (直接修改全局响应式对象)
+      form.idCard = '';
+      form.name = '';
+      form.phone = '';
+      form.days = 1;
+      
+      selectedRoom.value = null;
+      globalState.selectedRoomId = null;
+      
+      // 刷新房间状态
+      await initRooms();
+    } else {
+      alert(`入住失败: ${data.error}`);
+    }
+  } catch (error) {
+    console.error("Check-in error:", error);
+    alert("入住请求失败，请检查网络连接");
+  } finally {
     isProcessing.value = false;
-  }, 1000);
+  }
 };
 
-onMounted(initRooms);
+onMounted(() => {
+  initRooms();
+});
 </script>
 
 <style scoped lang="scss">
 /* 引入通用面板样式 */
 @import '../common-panel.css';
+
+/* 强制允许输入框交互，防止全局 user-select: none 影响 */
+input {
+  user-select: auto !important;
+  -webkit-user-select: auto !important;
+}
 
 .glass-container {
   display: grid;
