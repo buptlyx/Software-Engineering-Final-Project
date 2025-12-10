@@ -22,12 +22,12 @@ class Config:
     }
     # 温度变化速率 (°C/秒)
     TEMP_RATES = {
-        "High": 0.6 / 60.0,
-        "Mid":  0.5 / 60.0,
-        "Low":  0.4 / 60.0
+        "High": 1.0 / 60.0,
+        "Mid":  1.0 / 120.0,
+        "Low":  1.0 / 180.0
     }
     # 回温速率: 0.5度/分钟
-    RETURN_RATE = 0.5 / 60.0
+    RETURN_RATE = 1.0 / 120.0
     
     MAX_SERVICE_SLOTS = 3
     WAIT_DURATION_ALLOC = 120
@@ -592,6 +592,10 @@ def control_room(room_id):
                 room.current_session_start_time = None
             
         room.power_on = new_power_state
+        
+        # Reset target temp to default (25.0) on power switch
+        room.target_temp = 25.0
+        
         print(f"[Control] Room {room_id} Power -> {room.power_on}")
         if room.power_on:
             scheduler.request_service(room_id, room.fan_speed)
