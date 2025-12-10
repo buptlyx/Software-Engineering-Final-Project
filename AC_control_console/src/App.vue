@@ -37,7 +37,6 @@ import { ref, computed } from 'vue';
 import { Circle } from 'lucide-vue-next';
 import SideBar from './components/sideBar.vue';
 import CheckIn from './components/check_in.vue';
-import CheckOut from './components/check_out.vue';
 import UserConsole from './components/user_console.vue';
 import Monitor from './components/monitor.vue';
 
@@ -46,7 +45,6 @@ const currentTab = ref('check-in');
 const currentViewComponent = computed(() => {
   const map = {
     'check-in': CheckIn,
-    'check-out': CheckOut,
     'user-console': UserConsole,
     'monitor': Monitor
   };
@@ -85,7 +83,9 @@ body {
 }
 
 .app-sidebar {
-  width: 260px;
+  width: 15%;
+  min-width: 60px;
+  max-width: 300px;
   flex-shrink: 0;
   z-index: 10;
 }

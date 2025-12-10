@@ -37,15 +37,14 @@
           <!-- 情况A: 房间空闲 -> 显示入住表单 -->
           <div v-if="selectedRoom.isFree" class="check-in-form fade-in">
             <div class="input-row center-text">
-              <label class="day-count-subtitle">预计入住天数</label>
-              <div class="number-input">
-                <button @click="days > 1 ? days-- : null" class="day-count-btn" style="font-size: 24px;">-</button>
-                <div class="number-display neon-input">{{ days }}</div>
-                <button @click="days++" class="day-count-btn" >+</button>
+              <label class="day-count-subtitle">确认入住信息</label>
+              <div class="info-msg" style="color: var(--text-sec); font-size: 14px; margin-bottom: 15px;">
+                入住天数将根据空调使用情况自动计算<br>
+                (每次手动开关空调计为1天)
               </div>
             </div>
             <div class="cost-preview">
-              预计费用: <span>¥{{ selectedRoom.price * days }}</span>
+              当前房价: <span>¥{{ selectedRoom.price }}/晚</span>
             </div>
             <button class="neon-btn primary big-btn" :disabled="isProcessing" @click="handleCheckIn">
               {{ isProcessing ? '系统处理中...' : '办理入住' }}
@@ -151,10 +150,16 @@
                 <div class="amount">
                   <small>¥</small>{{ (billData.stayFee + billData.extraFee).toFixed(2) }}
                 </div>
-                <div class="breakdown">房费 {{ billData.stayFee }} + 杂费 {{ billData.extraFee }}</div>
+                <div class="breakdown">
+                  房费 {{ billData.stayFee.toFixed(2) }} 元<br>
+                  空调费用 {{ billData.extraFee.toFixed(2) }} 元
+                </div>
               </div>
               <div class="btn-group">
-                <button class="neon-btn outline">打印明细</button>
+                <div class="export-row" style="display: flex; gap: 10px;">
+                  <button class="neon-btn outline" @click="downloadACBill">导出空调详单</button>
+                  <button class="neon-btn outline" @click="downloadStayBill">导出住宿账单</button>
+                </div>
                 <button class="neon-btn primary big" @click="handlePay">
                   确认收款并退房
                 </button>
@@ -227,7 +232,7 @@ const handleCheckIn = async () => {
     id_card: "110101199001011234", // 示例数据
     name: "张三", // 示例数据
     phone: "13800138000", // 示例数据
-    days: days.value
+    // days: days.value // 不再需要前端传递天数
   };
 
   try {
@@ -253,28 +258,37 @@ const handleCheckIn = async () => {
   }
 };
 
-const openCheckOutModal = () => {
+const openCheckOutModal = async () => {
   showCheckoutModal.value = true;
-  // 模拟拉取账单数据
   billData.value = null;
-  setTimeout(() => {
-    billData.value = {
-      roomType: selectedRoom.value.type,
-      checkInDate: '2025-12-05',
-      days: 3,
-      stayFee: selectedRoom.value.price * 3,
-      extraFee: 85.0,
-      records: [
-        { name: '空调', detail: '强风', qty: '120min', fee: 30 },
-        { name: '客房服务', detail: '可乐', qty: '2罐', fee: 15 },
-        { name: '空调', detail: '睡眠', qty: '400min', fee: 40 }
-      ]
-    };
-  }, 600);
+  
+  try {
+    const response = await fetch(`http://localhost:5000/api/room/${selectedRoom.value.id}/bill`);
+    if (response.ok) {
+      billData.value = await response.json();
+    } else {
+      alert('获取账单失败');
+      showCheckoutModal.value = false;
+    }
+  } catch (e) {
+    console.error(e);
+    alert('网络错误');
+    showCheckoutModal.value = false;
+  }
 };
 
 const closeModal = () => {
   showCheckoutModal.value = false;
+};
+
+const downloadACBill = () => {
+  if (!selectedRoom.value) return;
+  window.open(`http://localhost:5000/api/room/${selectedRoom.value.id}/export/ac_bill`, '_blank');
+};
+
+const downloadStayBill = () => {
+  if (!selectedRoom.value) return;
+  window.open(`http://localhost:5000/api/room/${selectedRoom.value.id}/export/stay_bill`, '_blank');
 };
 
 const handlePay = async () => {

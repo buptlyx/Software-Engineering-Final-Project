@@ -1,5 +1,5 @@
 <template>
-  <aside class="sidebar-glass">
+  <aside class="sidebar-glass" ref="sidebarRef" :class="{ 'narrow-mode': isNarrow }">
     <div class="logo-area">
       <div class="logo-icon">H</div>
       <div class="logo-text">HOTEL<br>SYSTEM</div>
@@ -12,12 +12,13 @@
         class="nav-item"
         :class="{ active: currentTab === tab.id }"
         @click="$emit('update:tab', tab.id)"
+        :title="isNarrow ? tab.label : ''"
       >
         <span class="icon">
-          <LogIn v-if="tab.icon === 'log-in'" :size="18" />
-          <LogOut v-if="tab.icon === 'log-out'" :size="18" />
-          <Snowflake v-if="tab.icon === 'snowflake'" :size="18" />
-          <square-activity v-if="tab.icon === 'SquareActivity'" :size="18" />
+          <LogIn v-if="tab.icon === 'log-in'" :size="20" />
+          <LogOut v-if="tab.icon === 'log-out'" :size="20" />
+          <Snowflake v-if="tab.icon === 'snowflake'" :size="20" />
+          <square-activity v-if="tab.icon === 'SquareActivity'" :size="20" />
         </span>
         <span class="label">{{ tab.label }}</span>
         <div class="glow-bar"></div>
@@ -31,17 +32,38 @@
 </template>
 
 <script setup>
+import { ref, onMounted, onUnmounted } from 'vue';
 import { LogIn, LogOut, Snowflake, SquareActivity} from 'lucide-vue-next';
 
 defineProps(['currentTab']);
 defineEmits(['update:tab']);
 
 const tabs = [
-  { id: 'check-in', label: '入住办理', icon: 'log-in' },
-  { id: 'check-out', label: '退房结算', icon: 'log-out' },
+  { id: 'check-in', label: '前台管理', icon: 'log-in' },
   { id: 'user-console', label: '客房控制', icon: 'snowflake' },
   { id: 'monitor', label: '监控系统', icon: 'SquareActivity' }
 ];
+
+const sidebarRef = ref(null);
+const isNarrow = ref(false);
+let resizeObserver = null;
+
+onMounted(() => {
+  if (sidebarRef.value) {
+    resizeObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        isNarrow.value = entry.contentRect.width < 120;
+      }
+    });
+    resizeObserver.observe(sidebarRef.value);
+  }
+});
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+  }
+});
 </script>
 
 <style scoped lang="scss">
@@ -52,6 +74,23 @@ const tabs = [
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  transition: width 0.3s;
+}
+
+/* 窄模式样式 */
+.narrow-mode {
+  .logo-text { display: none; }
+  .label { display: none; }
+  .logo-area { 
+    justify-content: center; 
+    padding: 40px 0; 
+    gap: 0;
+  }
+  .nav-item { 
+    justify-content: center; 
+    padding: 18px 0; 
+    .icon { margin-right: 0; }
+  }
 }
 
 .logo-area {

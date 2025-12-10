@@ -37,10 +37,50 @@ def init_db():
             duration INTEGER DEFAULT 0
         )
     ''')
+
+    # 创建空调详单表
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ac_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id TEXT NOT NULL,
+            request_time TIMESTAMP,
+            start_time TIMESTAMP,
+            end_time TIMESTAMP,
+            duration INTEGER,
+            fan_speed TEXT,
+            fee REAL,
+            total_fee_snapshot REAL
+        )
+    ''')
     
     conn.commit()
     conn.close()
     print(f"Database initialized at {DB_PATH}")
+
+def log_ac_session(room_id, request_time, start_time, end_time, duration, fan_speed, fee, total_fee_snapshot):
+    """记录一次空调使用会话"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO ac_sessions (room_id, request_time, start_time, end_time, duration, fan_speed, fee, total_fee_snapshot)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (room_id, request_time, start_time, end_time, duration, fan_speed, fee, total_fee_snapshot))
+    conn.commit()
+    conn.close()
+
+def get_ac_sessions(room_id):
+    """获取房间的所有空调详单"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        SELECT request_time, start_time, end_time, duration, fan_speed, fee, total_fee_snapshot
+        FROM ac_sessions
+        WHERE room_id = ?
+        ORDER BY start_time ASC
+    ''', (room_id,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
 
 def add_check_in(room_id, tenant_id, name, phone, days):
     """添加入住记录"""
@@ -97,6 +137,37 @@ def get_active_check_ins():
             'stay_days': row[4]
         }
     return result
+
+def get_room_check_in_info(room_id):
+    """获取指定房间的当前入住信息"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        SELECT check_in_time, stay_days 
+        FROM check_ins 
+        WHERE room_id = ? AND status = 'active'
+    ''', (room_id,))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            'check_in_time': row[0],
+            'stay_days': row[1]
+        }
+    return None
+
+def update_stay_days(room_id, days):
+    """更新入住天数"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        UPDATE check_ins 
+        SET stay_days = ?
+        WHERE room_id = ? AND status = 'active'
+    ''', (days, room_id))
+    conn.commit()
+    conn.close()
 
 def update_room_state(room_id, power_on, fan_speed, target_temp, current_temp, total_fee, duration):
     """更新房间空调状态"""
