@@ -404,8 +404,13 @@ def control_room(room_id):
     if room_id not in rooms:
         return jsonify({"error": "Room not found"}), 404
     
-    data = request.json
     room = rooms[room_id]
+
+    # Check if room is occupied
+    if room.is_free:
+        return jsonify({"error": "Room is not checked in. AC control disabled."}), 403
+    
+    data = request.json
     
     if 'power_on' in data:
         room.power_on = data['power_on']

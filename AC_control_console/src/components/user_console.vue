@@ -10,9 +10,9 @@
               <option v-for="id in roomList" :key="id" :value="id">ROOM {{ id }}</option>
             </select>
           </div>
-          <div class="status-tag" :class="{ active: isConnected }">
-            <Wifi class="icon-xs" :class="{ breathing: isConnected }" />
-            {{ isConnected ? 'ONLINE' : 'DISCONNECTED' }}
+          <div class="status-tag" :class="{ active: isConnected && acState.powerOn }">
+            <Wifi class="icon-xs" :class="{ breathing: isConnected && acState.powerOn }" />
+            {{ (isConnected && acState.powerOn) ? 'ONLINE' : 'DISCONNECTED' }}
           </div>
         </div>
         <div class="time-display">{{ currentTime }}</div>
@@ -245,10 +245,37 @@ watch(currentRoomId, () => {
 });
 
 // --- Methods ---
-const handlePower = () => {
-  acState.powerOn = !acState.powerOn;
-  syncStateToBackend(); // 发送请求
-  // 无论开闭，都持续轮询以实时显示温度变化（包括回温）
+const handlePower = async () => {
+  if (!acState.powerOn) {
+    // 尝试启动
+    try {
+      const res = await fetch(`${API_BASE_URL}/${currentRoomId.value}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          power_on: true,
+          target_temp: acState.targetTemp,
+          fan_speed: acState.fanSpeed
+        })
+      });
+
+      if (res.ok) {
+        acState.powerOn = true;
+        isConnected.value = true;
+      } else if (res.status === 403) {
+        alert('该房间未办理入住，无法启动空调');
+      } else {
+        isConnected.value = false;
+      }
+    } catch (e) {
+      console.error(e);
+      isConnected.value = false;
+    }
+  } else {
+    // 关闭
+    acState.powerOn = false;
+    syncStateToBackend();
+  }
 };
 
 const changeTemp = (d) => {
