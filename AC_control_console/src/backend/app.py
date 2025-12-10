@@ -1,10 +1,15 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import time
+import random
 from threading import Thread
+import database  # Import database module
 
 app = Flask(__name__)
 CORS(app)
+
+# Initialize Database
+database.init_db()
 
 # --- Configuration ---
 class Config:
@@ -31,7 +36,20 @@ class Room:
     def __init__(self, room_id, floor, initial_temp=28.0):
         self.room_id = room_id
         self.floor = floor
-        self.room_price = self._get_price_by_floor(floor)
+        
+        # Room Info
+        room_num = int(room_id[-2:])
+        
+        if floor == 1:
+            self.room_type = '豪华大床' if room_num > 8 else '标准间'
+            self.room_price = 350.0 if room_num > 8 else 220.0
+            self.deposit = 500.0
+        else:
+            self.room_type = '标准间'
+            self.room_price = 220.0
+            self.deposit = 0.0
+            
+        self.is_free = True
         
         # State
         self.power_on = False
@@ -49,12 +67,13 @@ class Room:
         self.tenant_phone = None
         self.stay_days = 0
 
-    def _get_price_by_floor(self, floor):
-        return {1: 100.0, 2: 150.0, 3: 200.0, 4: 250.0}.get(floor, 100.0)
-
     def to_dict(self):
         return {
             "room_id": self.room_id,
+            "type": self.room_type,
+            "price": self.room_price,
+            "deposit": self.deposit,
+            "isFree": self.is_free,
             "power_on": self.power_on,
             "is_active": self.is_active,
             "fan_speed": self.fan_speed,
@@ -63,7 +82,6 @@ class Room:
             "target_temp": self.target_temp,
             "total_fee": self.total_fee,
             "duration": self.duration,
-            "room_price": self.room_price,
             "tenant_id": self.tenant_id,
             "tenant_name": self.tenant_name,
             "tenant_phone": self.tenant_phone,
@@ -241,18 +259,34 @@ class Scheduler:
 
 # --- Initialization ---
 rooms = {}
+# Load active check-ins from DB
+active_check_ins = database.get_active_check_ins()
+# Load room states from DB
+saved_room_states = database.get_all_room_states()
+
 for floor in range(1, 5):
     for r in range(1, 11):
         room_id = f"{floor}{r:02d}"
         rooms[room_id] = Room(room_id, floor)
+        
+        # Restore state from DB if exists
+        if room_id in active_check_ins:
+            info = active_check_ins[room_id]
+            rooms[room_id].is_free = False
+            rooms[room_id].tenant_id = info['tenant_id']
+            rooms[room_id].tenant_name = info['tenant_name']
+            rooms[room_id].tenant_phone = info['tenant_phone']
+            rooms[room_id].stay_days = info['stay_days']
+        else:
+            rooms[room_id].is_free = True
 
 # Test Cases
 def set_test_case(room_id, temp, price=None):
     if room_id in rooms:
         rooms[room_id].initial_temp = temp
+        # Only set current_temp if not restored from DB (we'll handle this by re-applying DB state after)
         rooms[room_id].current_temp = temp
-        if price:
-            rooms[room_id].room_price = price
+        rooms[room_id].room_price = price
 
 # Cooling cases
 set_test_case("101", 32.0, 100.0)
@@ -267,11 +301,30 @@ set_test_case("108", 18.0, 150.0)
 set_test_case("109", 12.0, 200.0)
 set_test_case("110", 14.0, 100.0)
 
+# Apply saved room states (Overwriting test cases if data exists)
+for room_id, state in saved_room_states.items():
+    if room_id in rooms:
+        rooms[room_id].power_on = state['power_on']
+        rooms[room_id].fan_speed = state['fan_speed']
+        rooms[room_id].target_temp = state['target_temp']
+        rooms[room_id].current_temp = state['current_temp']
+        rooms[room_id].total_fee = state['total_fee']
+        rooms[room_id].duration = state['duration']
+        
+        # If power was on, we might need to request service
+        if rooms[room_id].power_on:
+             # We don't auto-request here to avoid storming, 
+             # but the background task auto-reactivate logic might pick it up 
+             # if we set is_active to False initially.
+             pass
+
 scheduler = Scheduler()
 
 # --- Background Task ---
 def background_task():
+    tick = 0
     while True:
+        tick += 1
         scheduler.check_time_slices()
         
         for room_id, room in rooms.items():
@@ -301,6 +354,16 @@ def background_task():
                     scheduler.release_service(room_id)
                     room.is_active = False
 
+        # Save to DB every 5 seconds
+        if tick % 5 == 0:
+            for room_id, room in rooms.items():
+                if room.power_on or room.total_fee > 0:
+                    database.update_room_state(
+                        room.room_id, room.power_on, room.fan_speed, 
+                        room.target_temp, room.current_temp, 
+                        room.total_fee, room.duration
+                    )
+
         time.sleep(1)
 
 thread = Thread(target=background_task)
@@ -308,6 +371,25 @@ thread.daemon = True
 thread.start()
 
 # --- Routes ---
+@app.route('/api/rooms', methods=['GET'])
+def get_rooms():
+    floors_data = []
+    for i in range(1, 5):
+        floor_rooms = []
+        for j in range(1, 11):
+            room_id = f"{i}{j:02d}"
+            if room_id in rooms:
+                r = rooms[room_id]
+                floor_rooms.append({
+                    "id": int(r.room_id), 
+                    "type": r.room_type,
+                    "price": r.room_price,
+                    "deposit": r.deposit,
+                    "isFree": r.is_free
+                })
+        floors_data.append({"level": i, "rooms": floor_rooms})
+    return jsonify(floors_data)
+
 @app.route('/api/room/<room_id>/status', methods=['GET'])
 def get_room_status(room_id):
     if room_id in rooms:
@@ -347,6 +429,13 @@ def control_room(room_id):
         print(f"[Control] Room {room_id} Fan Speed -> {room.fan_speed}")
         if room.power_on:
             scheduler.request_service(room_id, room.fan_speed)
+            
+    # Save state to DB immediately on control action
+    database.update_room_state(
+        room.room_id, room.power_on, room.fan_speed, 
+        room.target_temp, room.current_temp, 
+        room.total_fee, room.duration
+    )
         
     return jsonify({"status": "success", "current_state": room.to_dict()})
 
@@ -380,10 +469,40 @@ def check_in():
     room.tenant_name = name
     room.tenant_phone = phone
     room.stay_days = days
+    room.is_free = False # Mark as occupied
+    
+    # Save to DB
+    database.add_check_in(room_id, id_card, name, phone, days)
     
     print(f"[CheckIn] Room {room_id} checked in by {name} for {days} days.")
     
     return jsonify({"status": "success", "message": "Check-in successful"})
+
+@app.route('/api/check_out', methods=['POST'])
+def check_out():
+    data = request.json
+    room_id = data.get('room_id')
+    
+    if not room_id or room_id not in rooms:
+        return jsonify({"error": "Room not found"}), 404
+        
+    room = rooms[room_id]
+    
+    # Clear memory state
+    room.is_free = True
+    room.tenant_id = None
+    room.tenant_name = None
+    room.tenant_phone = None
+    room.stay_days = 0
+    room.power_on = False # Turn off AC
+    room.is_active = False
+    scheduler.release_service(room_id) # Stop service
+    
+    # Update DB
+    database.check_out_db(room_id)
+    
+    print(f"[CheckOut] Room {room_id} checked out.")
+    return jsonify({"status": "success", "message": "Check-out successful"})
 
 if __name__ == '__main__':
     print("启动 Python 后端计费服务...")

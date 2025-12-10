@@ -198,25 +198,18 @@ const statusClass = computed(() => {
   return selectedRoom.value.isFree ? 'status-free' : 'status-busy';
 });
 
-// --- 初始化房态数据 (模拟) ---
-const initRooms = () => {
-  const f = [];
-  for (let i = 1; i <= 4; i++) {
-    const rooms = [];
-    for (let j = 1; j <= 10; j++) {
-      // 随机生成一些已入住房间
-      const isFree = Math.random() > 0.4; 
-      rooms.push({ 
-        id: i*100 + j, 
-        type: j > 8 ? '豪华大床' : '标准间', 
-        price: j > 8 ? 350 : 220, 
-        deposit: 500, 
-        isFree: isFree 
-      });
+// --- 初始化房态数据 (从后端获取) ---
+const fetchRooms = async () => {
+  try {
+    const response = await fetch('http://localhost:5000/api/rooms');
+    if (!response.ok) {
+      throw new Error('Network response was not ok');
     }
-    f.push({ level: i, rooms });
+    const data = await response.json();
+    floors.value = data;
+  } catch (error) {
+    console.error('Failed to fetch rooms:', error);
   }
-  floors.value = f;
 };
 
 // --- 交互逻辑 ---
@@ -225,14 +218,39 @@ const handleRoomSelect = (room) => {
   days.value = 1; // 重置天数
 };
 
-const handleCheckIn = () => {
+const handleCheckIn = async () => {
   isProcessing.value = true;
-  setTimeout(() => {
-    alert(`房间 ${selectedRoom.value.id} 入住办理成功！`);
-    // 更新本地状态
-    selectedRoom.value.isFree = false;
+  
+  // 构造请求数据 (模拟身份证和姓名，实际应从表单获取)
+  const payload = {
+    room_id: String(selectedRoom.value.id),
+    id_card: "110101199001011234", // 示例数据
+    name: "张三", // 示例数据
+    phone: "13800138000", // 示例数据
+    days: days.value
+  };
+
+  try {
+    const response = await fetch('http://localhost:5000/api/check_in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      alert(`房间 ${selectedRoom.value.id} 入住办理成功！`);
+      selectedRoom.value.isFree = false;
+      // 刷新房态
+      fetchRooms();
+    } else {
+      const err = await response.json();
+      alert(`入住失败: ${err.error || '未知错误'}`);
+    }
+  } catch (e) {
+    alert('网络错误，请检查后端服务');
+  } finally {
     isProcessing.value = false;
-  }, 800);
+  }
 };
 
 const openCheckOutModal = () => {
@@ -259,15 +277,29 @@ const closeModal = () => {
   showCheckoutModal.value = false;
 };
 
-const handlePay = () => {
-  alert('收款成功，退房完成');
-  showCheckoutModal.value = false;
-  // 更新房间状态为空闲
-  selectedRoom.value.isFree = true;
-  selectedRoom.value = null; // 清除选中
+const handlePay = async () => {
+  try {
+    const response = await fetch('http://localhost:5000/api/check_out', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room_id: String(selectedRoom.value.id) })
+    });
+
+    if (response.ok) {
+      alert('收款成功，退房完成');
+      showCheckoutModal.value = false;
+      selectedRoom.value.isFree = true;
+      selectedRoom.value = null;
+      fetchRooms();
+    } else {
+      alert('退房失败');
+    }
+  } catch (e) {
+    alert('网络错误');
+  }
 };
 
-onMounted(initRooms);
+onMounted(fetchRooms);
 </script>
 
 <style scoped lang="scss">
