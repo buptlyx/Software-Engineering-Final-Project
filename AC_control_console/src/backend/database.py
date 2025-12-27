@@ -21,9 +21,22 @@ def init_db():
             check_in_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             check_out_time TIMESTAMP,
             stay_days INTEGER,
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'active',
+            deposit REAL DEFAULT 0.0,
+            food_orders TEXT DEFAULT '[]'
         )
     ''')
+    
+    # 尝试添加新列（如果表已存在但没有这些列）
+    try:
+        c.execute('ALTER TABLE check_ins ADD COLUMN deposit REAL DEFAULT 0.0')
+    except sqlite3.OperationalError:
+        pass # 列已存在
+        
+    try:
+        c.execute("ALTER TABLE check_ins ADD COLUMN food_orders TEXT DEFAULT '[]'")
+    except sqlite3.OperationalError:
+        pass # 列已存在
 
     # 创建房间状态表 (用于保存空调控制信息)
     c.execute('''
@@ -82,7 +95,7 @@ def get_ac_sessions(room_id):
     conn.close()
     return rows
 
-def add_check_in(room_id, tenant_id, name, phone, days):
+def add_check_in(room_id, tenant_id, name, phone, days, deposit=0.0, food_orders='[]'):
     """添加入住记录"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -96,9 +109,9 @@ def add_check_in(room_id, tenant_id, name, phone, days):
     
     # 插入新记录
     c.execute('''
-        INSERT INTO check_ins (room_id, tenant_id, tenant_name, tenant_phone, stay_days, status)
-        VALUES (?, ?, ?, ?, ?, 'active')
-    ''', (room_id, tenant_id, name, phone, days))
+        INSERT INTO check_ins (room_id, tenant_id, tenant_name, tenant_phone, stay_days, status, deposit, food_orders)
+        VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+    ''', (room_id, tenant_id, name, phone, days, deposit, food_orders))
     
     conn.commit()
     conn.close()
@@ -120,7 +133,7 @@ def get_active_check_ins():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
-        SELECT room_id, tenant_id, tenant_name, tenant_phone, stay_days 
+        SELECT room_id, tenant_id, tenant_name, tenant_phone, stay_days, deposit, food_orders
         FROM check_ins 
         WHERE status = 'active'
     ''')
@@ -134,7 +147,9 @@ def get_active_check_ins():
             'tenant_id': row[1],
             'tenant_name': row[2],
             'tenant_phone': row[3],
-            'stay_days': row[4]
+            'stay_days': row[4],
+            'deposit': row[5],
+            'food_orders': row[6]
         }
     return result
 
@@ -143,7 +158,7 @@ def get_room_check_in_info(room_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
-        SELECT check_in_time, stay_days 
+        SELECT check_in_time, stay_days, deposit, food_orders
         FROM check_ins 
         WHERE room_id = ? AND status = 'active'
     ''', (room_id,))
@@ -153,7 +168,9 @@ def get_room_check_in_info(room_id):
     if row:
         return {
             'check_in_time': row[0],
-            'stay_days': row[1]
+            'stay_days': row[1],
+            'deposit': row[2],
+            'food_orders': row[3]
         }
     return None
 
@@ -207,3 +224,66 @@ def get_all_room_states():
             'duration': row[6]
         }
     return result
+
+def get_report_data():
+    """获取统计报表数据"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    # 1. 统计空调总费用和总时长
+    c.execute('SELECT SUM(fee), SUM(duration) FROM ac_sessions')
+    ac_row = c.fetchone()
+    total_ac_fee = ac_row[0] if ac_row[0] else 0.0
+    total_ac_duration = ac_row[1] if ac_row[1] else 0
+    
+    # 2. 统计入住记录相关 (房费、餐饮费)
+    # 注意：这里需要一些逻辑来计算房费，因为房价可能因房间而异。
+    # 为简化，我们假设标准间220，豪华间350。
+    # 更好的做法是在 check_ins 表中记录当时的房价，但现在我们只能估算或关联查询。
+    # 我们先获取所有 check_ins 记录
+    c.execute('SELECT room_id, stay_days, food_orders FROM check_ins')
+    rows = c.fetchall()
+    
+    total_stay_fee = 0.0
+    total_food_fee = 0.0
+    total_check_ins = len(rows)
+    
+    import json
+    
+    for row in rows:
+        r_id = row[0]
+        days = row[1] if row[1] else 0
+        f_orders = row[2]
+        
+        # 估算房费
+        # 简单逻辑：楼层1且房号>8为豪华(350)，否则标准(220)
+        # 房间ID格式 "101", "205"
+        try:
+            floor = int(r_id[0])
+            num = int(r_id[-2:])
+            price = 220.0
+            if floor == 1 and num > 8:
+                price = 350.0
+            total_stay_fee += price * days
+        except:
+            pass
+            
+        # 计算餐饮费
+        if f_orders:
+            try:
+                orders = json.loads(f_orders)
+                for item in orders:
+                    total_food_fee += item.get('price', 0) * item.get('count', 0)
+            except:
+                pass
+
+    conn.close()
+    
+    return {
+        "total_income": total_stay_fee + total_ac_fee + total_food_fee,
+        "total_stay_fee": total_stay_fee,
+        "total_ac_fee": total_ac_fee,
+        "total_food_fee": total_food_fee,
+        "total_check_ins": total_check_ins,
+        "total_ac_duration": total_ac_duration
+    }

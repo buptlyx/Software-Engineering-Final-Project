@@ -39,6 +39,7 @@ import SideBar from './components/sideBar.vue';
 import CheckIn from './components/check_in.vue';
 import UserConsole from './components/user_console.vue';
 import Monitor from './components/monitor.vue';
+import Report from './components/report.vue';
 
 const currentTab = ref('check-in');
 
@@ -46,7 +47,8 @@ const currentViewComponent = computed(() => {
   const map = {
     'check-in': CheckIn,
     'user-console': UserConsole,
-    'monitor': Monitor
+    'monitor': Monitor,
+    'report': Report
   };
   return map[currentTab.value];
 });

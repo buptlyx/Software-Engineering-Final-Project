@@ -3,6 +3,7 @@ from flask_cors import CORS
 import time
 import random
 import datetime
+import json
 from threading import Thread
 import database  # Import database module
 
@@ -44,11 +45,11 @@ class Room:
         if floor == 1:
             self.room_type = '豪华大床' if room_num > 8 else '标准间'
             self.room_price = 350.0 if room_num > 8 else 220.0
-            self.deposit = 500.0
+            self.deposit = 100.0
         else:
             self.room_type = '标准间'
             self.room_price = 220.0
-            self.deposit = 0.0
+            self.deposit = 100.0
             
         self.is_free = True
         
@@ -67,6 +68,8 @@ class Room:
         self.tenant_name = None
         self.tenant_phone = None
         self.stay_days = 0
+        self.food_orders = []
+        self.food_fee = 0.0
         
         # Session Info
         self.current_session_start_time = None
@@ -98,7 +101,9 @@ class Room:
             "tenant_id": self.tenant_id,
             "tenant_name": self.tenant_name,
             "tenant_phone": self.tenant_phone,
-            "stay_days": self.stay_days
+            "stay_days": self.stay_days,
+            "food_orders": self.food_orders,
+            "food_fee": self.food_fee
         }
 
     def update_temp_and_fee(self):
@@ -299,6 +304,17 @@ for floor in range(1, 5):
             rooms[room_id].tenant_name = info['tenant_name']
             rooms[room_id].tenant_phone = info['tenant_phone']
             rooms[room_id].stay_days = info['stay_days']
+            rooms[room_id].deposit = info.get('deposit', 0.0)
+            try:
+                rooms[room_id].food_orders = json.loads(info.get('food_orders', '[]'))
+                # Calculate food fee
+                total_food = 0
+                for item in rooms[room_id].food_orders:
+                    total_food += item.get('price', 0) * item.get('count', 0)
+                rooms[room_id].food_fee = total_food
+            except:
+                rooms[room_id].food_orders = []
+                rooms[room_id].food_fee = 0.0
         else:
             rooms[room_id].is_free = True
 
@@ -467,20 +483,41 @@ def get_room_bill(room_id):
     extra_fee = room.total_fee
     
     # Construct bill data
+    records = [
+        {
+            "name": "空调费",
+            "detail": "累计使用",
+            "qty": f"{int(room.duration/60)}min",
+            "fee": round(room.total_fee, 2)
+        }
+    ]
+    
+    # Add food records
+    for item in room.food_orders:
+        if item.get('count', 0) > 0:
+            records.append({
+                "name": "餐饮费",
+                "detail": item.get('name'),
+                "qty": item.get('count'),
+                "fee": item.get('price', 0) * item.get('count', 0)
+            })
+            
+    # Add deposit record (as negative fee or separate display? Usually deposit is returned or deducted)
+    # Here we just list it, but total calculation depends on business logic.
+    # Assuming deposit is paid at check-in and returned at check-out, or deducted from total.
+    # Let's assume "Total Payable" = Stay + AC + Food - Deposit (if deposit was pre-paid)
+    # OR "Total Cost" = Stay + AC + Food. Deposit is separate.
+    # The user asked to "show deposit and food amount in the final bill".
+    
     bill_data = {
         "roomType": room.room_type,
         "checkInDate": check_in_date,
         "days": room.stay_days,
         "stayFee": stay_fee,
         "extraFee": extra_fee,
-        "records": [
-            {
-                "name": "空调费",
-                "detail": "累计使用",
-                "qty": f"{int(room.duration/60)}min",
-                "fee": round(room.total_fee, 2)
-            }
-        ]
+        "foodFee": room.food_fee,
+        "deposit": room.deposit,
+        "records": records
     }
     return jsonify(bill_data)
 
@@ -535,7 +572,8 @@ def export_stay_bill(room_id):
     check_out_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     stay_fee = room.room_price * room.stay_days
-    total_fee = stay_fee + room.total_fee
+    total_cost = stay_fee + room.total_fee + room.food_fee
+    final_payable = total_cost - room.deposit # Assuming deposit is deducted
     
     content = f"=== 住宿费用账单 ===\n"
     content += f"房间号: {room_id}\n"
@@ -546,8 +584,11 @@ def export_stay_bill(room_id):
     content += f"房费单价: {room.room_price}元/晚\n"
     content += f"住宿费小计: {stay_fee:.2f}元\n"
     content += f"空调费小计: {room.total_fee:.2f}元\n"
+    content += f"餐饮费小计: {room.food_fee:.2f}元\n"
+    content += f"已付押金: {room.deposit:.2f}元\n"
     content += f"--------------------------------------------------\n"
-    content += f"总应付金额: {total_fee:.2f}元\n"
+    content += f"消费总额: {total_cost:.2f}元\n"
+    content += f"应补差价: {final_payable:.2f}元\n"
     
     return Response(content, mimetype='text/plain', headers={"Content-Disposition": f"attachment;filename=stay_bill_{room_id}.txt"})
 
@@ -593,8 +634,9 @@ def control_room(room_id):
             
         room.power_on = new_power_state
         
-        # Reset target temp to default (25.0) on power switch
+        # Reset target temp to default (25.0) and fan speed to Mid on power switch
         room.target_temp = 25.0
+        room.fan_speed = "Mid"
         
         print(f"[Control] Room {room_id} Power -> {room.power_on}")
         if room.power_on:
@@ -659,6 +701,8 @@ def check_in():
     id_card = data.get('id_card')
     name = data.get('name')
     phone = data.get('phone')
+    deposit = float(data.get('deposit', 0))
+    food_orders = data.get('food_orders', []) # List of {name, price, count}
     # days is no longer required from frontend, default to 0
     days = 0
 
@@ -676,12 +720,20 @@ def check_in():
     room.tenant_name = name
     room.tenant_phone = phone
     room.stay_days = days
+    room.deposit = deposit
+    room.food_orders = food_orders
     room.is_free = False # Mark as occupied
     
-    # Save to DB
-    database.add_check_in(room_id, id_card, name, phone, days)
+    # Calculate food fee
+    total_food = 0
+    for item in food_orders:
+        total_food += item.get('price', 0) * item.get('count', 0)
+    room.food_fee = total_food
     
-    print(f"[CheckIn] Room {room_id} checked in by {name} for {days} days.")
+    # Save to DB
+    database.add_check_in(room_id, id_card, name, phone, days, deposit, json.dumps(food_orders))
+    
+    print(f"[CheckIn] Room {room_id} checked in by {name}. Deposit: {deposit}, Food Fee: {total_food}")
     
     return jsonify({"status": "success", "message": "Check-in successful"})
 
@@ -710,6 +762,11 @@ def check_out():
     
     print(f"[CheckOut] Room {room_id} checked out.")
     return jsonify({"status": "success", "message": "Check-out successful"})
+
+@app.route('/api/report', methods=['GET'])
+def get_report():
+    data = database.get_report_data()
+    return jsonify(data)
 
 if __name__ == '__main__':
     print("启动 Python 后端计费服务...")

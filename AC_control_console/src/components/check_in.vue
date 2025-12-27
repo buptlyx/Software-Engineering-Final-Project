@@ -38,11 +38,27 @@
           <div v-if="selectedRoom.isFree" class="check-in-form fade-in">
             <div class="input-row center-text">
               <label class="day-count-subtitle">确认入住信息</label>
-              <div class="info-msg" style="color: var(--text-sec); font-size: 14px; margin-bottom: 15px;">
-                入住天数将根据空调使用情况自动计算<br>
-                (每次手动开关空调计为1天)
+            </div>
+            
+            <!-- 押金输入 -->
+            <div class="input-group">
+              <label>押金 (¥)</label>
+              <input type="number" v-model="deposit" class="neon-input-field" />
+            </div>
+
+            <!-- 订餐选择 -->
+            <div class="food-selection">
+              <label>订餐服务</label>
+              <div v-for="item in foodMenu" :key="item.id" class="food-item">
+                <span>{{ item.name }} (¥{{ item.price }})</span>
+                <div class="counter">
+                  <button @click="foodOrders[item.id] > 0 && foodOrders[item.id]--">-</button>
+                  <span>{{ foodOrders[item.id] }}</span>
+                  <button @click="foodOrders[item.id]++">+</button>
+                </div>
               </div>
             </div>
+
             <div class="cost-preview">
               当前房价: <span>¥{{ selectedRoom.price }}/晚</span>
             </div>
@@ -139,7 +155,11 @@
                     </tbody>
                   </table>
                 </div>
-                <div class="subtotal">杂费小计: ¥{{ billData.extraFee.toFixed(2) }}</div>
+                <div class="subtotal">
+                  <div>空调费: ¥{{ billData.extraFee.toFixed(2) }}</div>
+                  <div>餐饮费: ¥{{ (billData.foodFee || 0).toFixed(2) }}</div>
+                  <div>已付押金: ¥{{ (billData.deposit || 0).toFixed(2) }}</div>
+                </div>
               </div>
             </div>
 
@@ -148,11 +168,13 @@
               <div class="total-display">
                 <label>总应付金额</label>
                 <div class="amount">
-                  <small>¥</small>{{ (billData.stayFee + billData.extraFee).toFixed(2) }}
+                  <small>¥</small>{{ (billData.stayFee + billData.extraFee + (billData.foodFee || 0) - (billData.deposit || 0)).toFixed(2) }}
                 </div>
                 <div class="breakdown">
                   房费 {{ billData.stayFee.toFixed(2) }} 元<br>
-                  空调费用 {{ billData.extraFee.toFixed(2) }} 元
+                  空调 {{ billData.extraFee.toFixed(2) }} 元<br>
+                  餐饮 {{ (billData.foodFee || 0).toFixed(2) }} 元<br>
+                  押金 -{{ (billData.deposit || 0).toFixed(2) }} 元
                 </div>
               </div>
               <div class="btn-group">
@@ -187,6 +209,18 @@ const isProcessing = ref(false);
 
 // --- 入住相关状态 ---
 const days = ref(1);
+const deposit = ref(0);
+const foodMenu = [
+  { id: 'coke', name: '可乐', price: 5 },
+  { id: 'burger', name: '汉堡', price: 20 },
+  { id: 'pasta', name: '意大利面', price: 35 }
+];
+const foodOrders = ref({}); // { coke: 0, burger: 0, pasta: 0 }
+
+// 初始化 foodOrders
+foodMenu.forEach(item => {
+  foodOrders.value[item.id] = 0;
+});
 
 // --- 退房相关状态 ---
 const showCheckoutModal = ref(false);
@@ -221,17 +255,37 @@ const fetchRooms = async () => {
 const handleRoomSelect = (room) => {
   selectedRoom.value = room;
   days.value = 1; // 重置天数
+  deposit.value = room.deposit || 0; // 默认押金
+  // 重置订餐
+  Object.keys(foodOrders.value).forEach(key => {
+    foodOrders.value[key] = 0;
+  });
 };
 
 const handleCheckIn = async () => {
   isProcessing.value = true;
   
+  // 构造订餐列表
+  const orders = [];
+  foodMenu.forEach(item => {
+    const count = foodOrders.value[item.id];
+    if (count > 0) {
+      orders.push({
+        name: item.name,
+        price: item.price,
+        count: count
+      });
+    }
+  });
+
   // 构造请求数据 (模拟身份证和姓名，实际应从表单获取)
   const payload = {
     room_id: String(selectedRoom.value.id),
     id_card: "110101199001011234", // 示例数据
     name: "张三", // 示例数据
     phone: "13800138000", // 示例数据
+    deposit: Number(deposit.value),
+    food_orders: orders
     // days: days.value // 不再需要前端传递天数
   };
 
@@ -561,6 +615,32 @@ th { color: var(--text-sec); font-weight: normal; }
   color: #fff;
   text-align: center;
   padding: 10px 0;
+}
+.input-group {
+  margin-bottom: 15px;
+  label { display: block; color: var(--text-sec); margin-bottom: 5px; font-size: 14px; }
+  .neon-input-field {
+    width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+    color: #fff; padding: 8px; border-radius: 4px; text-align: center;
+    &:focus { border-color: var(--primary); outline: none; }
+  }
+}
+.food-selection {
+  margin-bottom: 20px;
+  label { display: block; color: var(--text-sec); margin-bottom: 10px; font-size: 14px; }
+  .food-item {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; font-size: 14px;
+    .counter {
+      display: flex; align-items: center; gap: 8px;
+      button {
+        width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border);
+        background: rgba(255,255,255,0.1); color: #fff; cursor: pointer;
+        &:hover { background: var(--primary); color: #000; }
+      }
+      span { width: 20px; text-align: center; }
+    }
+  }
 }
 .number-display{
   font-size: 20px;

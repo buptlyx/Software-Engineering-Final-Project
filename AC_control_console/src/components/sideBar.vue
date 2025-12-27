@@ -19,6 +19,7 @@
           <LogOut v-if="tab.icon === 'log-out'" :size="20" />
           <Snowflake v-if="tab.icon === 'snowflake'" :size="20" />
           <square-activity v-if="tab.icon === 'SquareActivity'" :size="20" />
+          <BarChart3 v-if="tab.icon === 'bar-chart'" :size="20" />
         </span>
         <span class="label">{{ tab.label }}</span>
         <div class="glow-bar"></div>
@@ -33,7 +34,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
-import { LogIn, LogOut, Snowflake, SquareActivity} from 'lucide-vue-next';
+import { LogIn, LogOut, Snowflake, SquareActivity, BarChart3 } from 'lucide-vue-next';
 
 defineProps(['currentTab']);
 defineEmits(['update:tab']);
@@ -41,7 +42,8 @@ defineEmits(['update:tab']);
 const tabs = [
   { id: 'check-in', label: '前台管理', icon: 'log-in' },
   { id: 'user-console', label: '客房控制', icon: 'snowflake' },
-  { id: 'monitor', label: '监控系统', icon: 'SquareActivity' }
+  { id: 'monitor', label: '监控系统', icon: 'SquareActivity' },
+  { id: 'report', label: '统计报表', icon: 'bar-chart' }
 ];
 
 const sidebarRef = ref(null);
