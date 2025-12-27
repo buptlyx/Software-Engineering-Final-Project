@@ -4,35 +4,35 @@ import time
 
 # 配置
 API_BASE = "http://localhost:5000/api"
-OUTPUT_FILE = "test_report.xlsx"
+OUTPUT_FILE = "test_report_for_hot.xlsx"
 
 # 测试用例定义
 # 格式: { 分钟数: [ (房间号, 动作类型, 值) ] }
 # 动作类型: 'power' (True/False), 'temp' (float), 'speed' ('High'/'Mid'/'Low')
 # 请根据您的图片内容填写以下字典
 TEST_CASES = {
-    0: [("101", "power", True)],
-    1: [("101", "temp", 18),("102","power", True),("105","power", True)],
-    2: [("103", "power", True)],
-    3: [("102", "temp", 19), ("104", "power", True)],
-    4: [("105", "temp", 22)],
-    5: [("101", "speed", "High")],
-    6: [("102", "power", False)],
-    7: [("102", "power", True), ("105", "speed", "High")],
-    9: [("101", "temp", 22), ("104", "temp", 18), ("104", "speed", "High")],
-    11: [("102", "temp", 22)],
-    12: [("105", "speed", "Low")],
-    14: [("101", "power", False), ("103", "temp", 24), ("103", "speed", "Low")],
-    15: [("105", "temp", 20), ("105", "speed", "High")],
-    16: [("102", "power", False)],
-    17: [("103", "speed", "High")],
-    18: [("101", "power", True), ("103", "temp", 20), ("103", "speed", "Mid")],
-    19: [("102", "power", True)],
-    20: [("104", "temp", 25)],
-    22: [("103", "power", False)],
-    23: [("105", "power", False)],
-    24: [("101", "power", False)],
-    25: [("102", "power", False), ("104", "power", False)]
+    0: [("106", "power", True)],
+    1: [("106", "temp", 24),("106","power", True)],
+    2: [("108", "power", True)],
+    3: [("108", "temp", 28), ("109", "power", True), ("110", "power", True)],
+    4: [("108", "temp", 28), ("110", "speed", "High")],
+    5: [("106", "speed", "High")],
+    7: [("110", "temp", 24)],
+    9: [("106", "temp", 22), ("109", "temp", 21), ("109", "speed", "High")],
+    11: [("110", "speed", "Mid")],
+
+    12: [("107", "power", False)],
+    14: [("106", "power", False), ("108", "speed", "Low")],
+    16: [("110", "power", False)],
+
+    17: [("108", "speed", "High")],
+    18: [("106", "power", True), ("109", "temp", 25), ("109", "speed", "Mid")],
+
+    20: [("107", "temp", 26), ("107", "speed", "Mid"), ("110", "power", True)],
+
+
+    24: [("106", "power", False), ("108", "power", False), ("110", "power", False)],
+    25: [("107", "power", False), ("109", "power", False)]
 }
 
 def run_test():
@@ -63,8 +63,7 @@ def run_test():
         
         # 2. 获取当前状态快照
         # 获取所有房间状态
-        # 这里我们假设只关心 101-105 (根据图片推测)
-        target_rooms = ["101", "102", "103", "104", "105"]
+        target_rooms = ["106", "107", "108", "109", "110"]
         row = {"Time (min)": minute}
         
         # 获取调度队列信息 (需要后端支持，或者通过遍历所有房间状态推断)
