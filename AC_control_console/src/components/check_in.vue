@@ -181,6 +181,7 @@
                 <div class="export-row" style="display: flex; gap: 10px;">
                   <button class="neon-btn outline" @click="downloadACBill">导出空调详单</button>
                   <button class="neon-btn outline" @click="downloadStayBill">导出住宿账单</button>
+                  <button class="neon-btn outline" @click="downloadDetailedBill">导出住宿详单</button>
                 </div>
                 <button class="neon-btn primary big" @click="handlePay">
                   确认收款并退房
@@ -343,6 +344,11 @@ const downloadACBill = () => {
 const downloadStayBill = () => {
   if (!selectedRoom.value) return;
   window.open(`http://localhost:5000/api/room/${selectedRoom.value.id}/export/stay_bill`, '_blank');
+};
+
+const downloadDetailedBill = () => {
+  if (!selectedRoom.value) return;
+  window.open(`http://localhost:5000/api/room/${selectedRoom.value.id}/export/detailed_bill`, '_blank');
 };
 
 const handlePay = async () => {

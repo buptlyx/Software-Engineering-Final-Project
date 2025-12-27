@@ -592,6 +592,60 @@ def export_stay_bill(room_id):
     
     return Response(content, mimetype='text/plain', headers={"Content-Disposition": f"attachment;filename=stay_bill_{room_id}.txt"})
 
+@app.route('/api/room/<room_id>/export/detailed_bill', methods=['GET'])
+def export_detailed_bill(room_id):
+    if room_id not in rooms:
+        return "Room not found", 404
+    
+    room = rooms[room_id]
+    check_in_info = database.get_room_check_in_info(room_id)
+    check_in_date = check_in_info['check_in_time'] if check_in_info else "Unknown"
+    check_out_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    stay_fee = room.room_price * room.stay_days
+    total_cost = stay_fee + room.total_fee + room.food_fee
+    final_payable = total_cost - room.deposit
+    
+    sessions = database.get_ac_sessions(room_id)
+    
+    content = f"=== 住宿详细账单 ===\n"
+    content += f"房间号: {room_id}\n"
+    content += f"入住时间: {check_in_date}\n"
+    content += f"离开时间: {check_out_date}\n"
+    content += f"入住天数: {room.stay_days}\n"
+    content += f"--------------------------------------------------\n"
+    content += f"费用汇总:\n"
+    content += f"  房费 ({room.room_price}元/晚 * {room.stay_days}天): {stay_fee:.2f}元\n"
+    content += f"  餐饮费: {room.food_fee:.2f}元\n"
+    content += f"  空调费: {room.total_fee:.2f}元\n"
+    content += f"  已付押金: {room.deposit:.2f}元\n"
+    content += f"--------------------------------------------------\n"
+    content += f"应付总额: {total_cost:.2f}元\n"
+    content += f"实付金额 (扣除押金): {final_payable:.2f}元\n"
+    content += f"==================================================\n"
+    content += f"\n"
+    content += f"=== 空调使用明细 ===\n"
+    content += f"空调调度次数: {room.dispatch_count}次\n"
+    content += f"风速统计:\n"
+    for speed in ["High", "Mid", "Low"]:
+        s = room.speed_stats.get(speed, {"duration": 0, "fee": 0})
+        content += f"  {speed}: 时长 {s['duration']:.2f}秒, 费用 {s['fee']:.2f}元\n"
+    content += f"--------------------------------------------------\n"
+    content += f"{'开始时间':<20} | {'结束时间':<20} | {'时长(秒)':<8} | {'风速':<5} | {'费用':<8} | {'累积费用':<8}\n"
+    content += f"--------------------------------------------------\n"
+    
+    for s in sessions:
+        # s: request_time, start_time, end_time, duration, fan_speed, fee, total_fee_snapshot
+        start = s[1]
+        end = s[2]
+        dur = s[3]
+        speed = s[4]
+        fee = s[5]
+        total = s[6]
+        content += f"{start:<20} | {end:<20} | {dur:<8} | {speed:<5} | {fee:<8.4f} | {total:<8.4f}\n"
+        
+    return Response(content, mimetype='text/plain', headers={"Content-Disposition": f"attachment;filename=detailed_bill_{room_id}.txt"})
+
 @app.route('/api/room/<room_id>/control', methods=['POST'])
 def control_room(room_id):
     if room_id not in rooms:
